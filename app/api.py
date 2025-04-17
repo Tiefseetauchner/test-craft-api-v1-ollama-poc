@@ -14,7 +14,7 @@ import htmlmin
 config = Config()
 logger = Config.logger
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "mistral:latest"
 MODEL_SELECTION_ENABLED = False
 SUPPORTED_MODELS = [
     {
@@ -41,6 +41,16 @@ SUPPORTED_MODELS = [
         "name": "gpt-4-turbo",
         "tokens": 128000,
         "label": "gpt-4-turbo (128,000 tokens)"
+    },
+    {
+        "name": "llama3.2:latest",
+        "tokens": 128000,
+        "label": "llama3.2 (Not too many tokens)"
+    },
+    {
+        "name": "mistral:latest",
+        "tokens": 128000,
+        "label": "mistral (Not too many tokens)"
     }
 ]
 MAX_TOKENS = 16000
@@ -51,7 +61,11 @@ def get_model_by_name(name):
     for model in SUPPORTED_MODELS:
         if model["name"] == name:
             return model
-    return {}
+    return {
+        "name": name,
+        "tokens": 128000,
+        "label": name,
+    }
 
 
 def is_o1_model_or_newer(model_name):
@@ -106,10 +120,12 @@ def call_openai_api(prompt, role, isStream, model="", key=""):
     else:
         client = OpenAI(api_key=key)
 
-    if not is_prompt_length_valid(prompt, model):
-        if config.ENVIRONMENT == "production":
-            logger.log_text("Prompt too large", severity="INFO")
-        return jsonify({"error": "The prompt is too long."}), 413
+    # NOTE: This was removed temporarily as tiktoken only works for OAI models.
+    #       Reenable when solution for custom models was found
+    # if not is_prompt_length_valid(prompt, model):
+    #     if config.ENVIRONMENT == "production":
+    #         logger.log_text("Prompt too large", severity="INFO")
+    #     return jsonify({"error": "The prompt is too long."}), 413
 
     print(f"Model: {model}")
 
@@ -176,9 +192,8 @@ def models():
     # Example model: gpt-3.5-turbo-1106 (16,385 tokens)
     models_list = response.model_dump().get("data")
     filtered_list = [
-        {"label": f"{model['label']}", "id": model["name"]}
-        for model in SUPPORTED_MODELS
-        if any(model["name"] == openai_model["id"] for openai_model in models_list)
+        {"label": model.get("label", model["id"]), "id": model["id"]}
+        for model in models_list
     ]
     response = {
         "models": filtered_list,
@@ -186,7 +201,6 @@ def models():
         "model_selection_enabled": MODEL_SELECTION_ENABLED,
     }
     return response, 200
-
 
 @api.route("/api/generate-ideas", methods=["POST"])
 @query_params()
